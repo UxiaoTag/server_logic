@@ -3,7 +3,9 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
@@ -50,11 +52,18 @@ func (self *Server) Start() {
 	rand.Seed(time.Now().Unix())
 	csvs.CheckLoadCsv()
 	go GetManageBanWord().Run()
+	go GetManageHttp().InitData()
+	go GetManagePlayer().Run()
 
 	//fmt.Printf("数据测试----start\n")
-	playerTest := NewTestPlayer()
+	playerTest := NewTestPlayer(nil, 10086)
 	go playerTest.Run()
 	go self.SignalHandle()
+
+	err := http.ListenAndServe(":6666", nil)
+	if err != nil {
+		log.Fatalf("HTTP server failed: %v", err)
+	}
 
 	//加这条是因为会出现 如果go创建线程慢了导致self.Wait.Wait()判断计时器空直接退出
 	time.Sleep(1 * time.Second)

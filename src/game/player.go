@@ -1,9 +1,12 @@
 package game
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"server/csvs"
+
+	"golang.org/x/net/websocket"
 )
 
 const (
@@ -27,9 +30,15 @@ type Player struct {
 	ModMap        *ModMap
 
 	modManage map[string]interface{}
+
+	ws           *websocket.Conn
+	exitTime     int64
+	channelLogic chan []byte
 }
 
-func NewTestPlayer() *Player {
+var player *Player
+
+func NewTestPlayer(ws *websocket.Conn, UserId int) *Player {
 	player := new(Player)
 	player.ModPlayer = new(ModPlayer)
 	player.ModIcon = new(ModIcon)
@@ -61,7 +70,9 @@ func NewTestPlayer() *Player {
 	player.ModPlayer.WorldLevel = 1
 	player.ModPlayer.WorldLevelNow = 1
 	//****************************************
-	player.ModPlayer.UserId = 10000666
+	player.channelLogic = make(chan []byte)
+	player.ModPlayer.UserId = UserId
+	player.ws = ws
 	player.InitData()
 	return player
 }
@@ -83,13 +94,13 @@ func (self *Player) InitData() {
 		if err != nil {
 			return
 		}
-		self.ModPlayer.SaveData(selfPath+"/player.json")
-	}else{
-		self.ModPlayer.LoadData(selfPath+"/player.json")
+		self.ModPlayer.SaveData(selfPath + "/player.json")
+	} else {
+		self.ModPlayer.LoadData(selfPath + "/player.json")
 	}
 }
 
-//对外接口
+// 对外接口
 func (self *Player) RecvSetIcon(iconId int) {
 	self.ModPlayer.SetIcon(iconId, self)
 }
@@ -159,12 +170,12 @@ func (self *Player) Run() {
 		case 7:
 			self.HandleWeapon()
 		case 8:
-			self.ModPlayer.SaveData(fmt.Sprintf("./save/%d/player.json",self.ModPlayer.UserId))
+			self.ModPlayer.SaveData(fmt.Sprintf("./save/%d/player.json", self.ModPlayer.UserId))
 		}
 	}
 }
 
-//基础信息
+// 基础信息
 func (self *Player) HandleBase() {
 	for {
 		fmt.Println("当前处于基础信息界面,请选择操作：0返回1查询信息2设置名字3设置签名4头像5名片6设置生日")
@@ -311,7 +322,7 @@ func (self *Player) HandleBagSetBirth() {
 	self.ModPlayer.SetBirth(month*100+day, self)
 }
 
-//背包
+// 背包
 func (self *Player) HandleBag() {
 	for {
 		fmt.Println("当前处于基础信息界面,请选择操作：0返回1增加物品2扣除物品3使用物品4升级七天神像(风)")
@@ -332,7 +343,7 @@ func (self *Player) HandleBag() {
 	}
 }
 
-//抽卡
+// 抽卡
 func (self *Player) HandlePool() {
 	for {
 		fmt.Println("当前处于模拟抽卡界面,请选择操作：0返回1角色信息2十连抽(入包)3单抽(可选次数,入包)" +
@@ -413,7 +424,7 @@ func (self *Player) HandleBagWindStatue() {
 	self.ModRole.CalHpPool()
 }
 
-//地图
+// 地图
 func (self *Player) HandleMap() {
 	fmt.Println("向着星辰与深渊,欢迎来到冒险家协会！")
 	for {
@@ -703,5 +714,31 @@ func (self *Player) HandleTakeOffWeapon() {
 		}
 		self.ModRole.TakeOffWeapon(RoleInfo, weapon, self)
 		RoleInfo.ShowInfo(self)
+	}
+}
+
+func (p *Player) LogicRun() {
+	for {
+		select {
+		case msg := <-p.channelLogic:
+			p.ProcessMsg(msg)
+		}
+	}
+}
+
+func (p *Player) SendLogic(msg []byte) {
+	p.channelLogic <- msg
+}
+func (p *Player) ProcessMsg(msg []byte) {
+	var msgHead MsgHead
+	msgErr := json.Unmarshal(msg, &msgHead)
+	if msgErr != nil {
+		fmt.Println("解析失败")
+		return
+	}
+
+	switch msgHead.MsgId {
+	case 1:
+		p.ModPool.HandleUpPoolTenByMsg(msg)
 	}
 }
